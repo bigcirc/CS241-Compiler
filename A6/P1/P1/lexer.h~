@@ -1,0 +1,103 @@
+#ifndef __LEXER_H__
+#define __LEXER_H__
+#include <string>
+#include <vector>
+
+namespace ASM{
+  // The different states the the MIPS recognizer uses
+  // Judicious use of the pimpl idiom or the Bridge pattern
+  // would allow us to place this in the implementation file
+  // However, that's more complexity than is necessary
+  enum State {
+    ST_ERR,
+    ST_START,
+    ST_ID,
+    ST_NUM,
+    ST_LPAREN,
+    ST_RPAREN,
+    ST_LBRACE,
+    ST_RBRACE,
+    ST_xR,
+    ST_xRE,
+    ST_xRET,
+    ST_xRETU,
+    ST_xRETUR,
+    ST_xRETURN,
+    ST_xI,
+    ST_xIF,
+    ST_xE,
+    ST_xEL,
+    ST_xELS,
+    ST_xELSE,
+    ST_xW,
+    ST_xWH,
+    ST_xWHI,
+    ST_xWHIL,
+    ST_xWHILE,
+    ST_xP,
+    ST_xPR,
+    ST_xPRI,
+    ST_xPRIN,
+    ST_xPRINT,
+    ST_xPRINTL,
+    ST_xPRINTLN,
+    ST_xWA,
+    ST_xWAI,
+    ST_xWAIN,
+    ST_BECOMES,
+    ST_xIN,
+    ST_xINT,
+    ST_EQ,
+    ST_nE,
+    ST_NE,
+    ST_LT,
+    ST_GT,
+    ST_LE,
+    ST_GE,
+    ST_PLUS,
+    ST_MINUS,
+    ST_STAR,
+    ST_SLASH,
+    ST_PCT,
+    ST_COMMA,
+    ST_SEMI,
+    ST_xN,
+    ST_xNE,
+    ST_xNEW,
+    ST_xD,
+    ST_xDE,
+    ST_xDEL,
+    ST_xDELE,
+    ST_xDELET,
+    ST_xDELETE,
+    ST_LBRACK,
+    ST_RBRACK,
+    ST_AMP,
+    ST_xNU,
+    ST_xNUL,
+    ST_xNULL,
+    ST_COMMENT,
+    ST_WHITESPACE
+  };
+  // Forward declare the Token class to reduce compilation dependencies
+  class Token;
+
+  // Class representing a MIPS recognizer
+  class Lexer {
+    // At most 21 states and 256 transitions (max number of characters in ASCII)
+    static const int maxStates = 21;
+    static const int maxTrans = 256;
+    // Transition function
+    State delta[maxStates][maxTrans];
+    // Private method to set the transitions based upon characters in the
+    // given string
+    void setTrans(State from, const std::string& chars, State to);
+  public:
+    Lexer();
+    // Output a vector of Tokens representing the Tokens present in the
+    // given line
+    std::vector<Token*> scan(const std::string& line);
+  };
+}
+
+#endif

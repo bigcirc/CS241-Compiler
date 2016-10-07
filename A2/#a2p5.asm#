@@ -1,0 +1,35 @@
+lis $4
+.word 4
+lis $11
+.word 1
+lis $8
+.word 0xffff000c		;address for printing
+lis $9
+.word 32  			;print space
+lis $10
+.word 64			;offset letter
+lis $12
+.word 10			;newline character
+
+add $5, $1, $0
+add $6, $2, $0
+beq $6, $0, endempty
+	
+loop:
+	beq $6, $0, end
+	lw $7, 0($5)
+y	sub $6, $6, $11
+	add $5, $5, $4
+	bne $7, $0, letter
+space:
+	sw $9, 0($8)
+	beq $0, $0, loop
+letter:
+	add $7, $7, $10		;offset letter
+	sw $7, 0($8)
+	beq $0, $0, loop
+
+end:
+	sw $12, 0($8)
+endempty:	
+	jr $31

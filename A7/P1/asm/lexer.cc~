@@ -1,0 +1,232 @@
+#include "lexer.h"
+#include "kind.h"
+using std::string;
+using std::vector;
+
+// Use the annonymous namespace to prevent external linking
+namespace {
+  // An array represents the Token kind that each state represents
+  // The ERR Kind represents an invalid token
+  ASM::Kind stateKinds[] = {
+    ASM::ERR,            // ST_ERR
+    ASM::ERR,            // ST_START
+    ASM::ID ,            // ST_ID
+    ASM::NUM,            // ST_NUM
+    ASM::LPAREN,       // ST_LPAREN
+    ASM::RPAREN,            // ST_RPAREN
+    ASM::LBRACE,             // ST_LBRACE
+    ASM::RBRACE,          // ST_RBRACE
+    ASM::ERR,          // ST_xR
+    ASM::ERR,         // ST_xRE
+    ASM::ERR,         // ST_xRET
+    ASM::ERR,            // ST_xRETU
+    ASM::ERR,            // ST_xRETUR
+    ASM::RETURN,         // ST_xRETURN
+    ASM::ERR,     // ST_xI
+    ASM::IF,            // ST_xIF
+    ASM::ERR,            // ST_xE
+    ASM::ERR,            // ST_xEL
+    ASM::ERR,            // ST_xELS
+    ASM::ELSE,            // ST_xELSE
+    ASM::ERR,            // ST_xW
+    ASM::ERR,            // ST_xWH
+    ASM::ERR,            // ST_xWHI
+    ASM::ERR,            // ST_xWHIL
+    ASM::WHILE,            // ST_xWHILE
+    ASM::ERR,            // ST_xP
+    ASM::ERR,            // ST_xPR
+    ASM::ERR,            // ST_xPRI
+    ASM::ERR,            // ST_xPRIN
+    ASM::ERR,            // ST_xPRINT
+    ASM::ERR,            // ST_xPRINTL
+    ASM::PRINTLN,            // ST_xPRTINLN
+    ASM::ERR,            // ST_xWA
+    ASM::ERR,            // ST_xWAI
+    ASM::WAIN,            // ST_xWAIN
+    ASM::BECOMES,            // ST_BECOMES
+    ASM::ERR,            // ST_xIN
+    ASM::INT,            // ST_xINT
+    ASM::EQ,            // ST_xEQ
+    ASM::ERR,            // ST_nE
+    ASM::NE,            // ST_NE
+    ASM::LT,            // ST_LT
+    ASM::GT,            // ST_GT
+    ASM::LE,            // ST_LE
+    ASM::GE,            // ST_GE
+    ASM::PLUS,            // ST_PLUS
+    ASM::MINUS,            // ST_MINUS
+    ASM::STAR,            // ST_STAR
+    ASM::SLASH,            // ST_SLASH
+    ASM::PCT,            // ST_PCT
+    ASM::COMMA,            // ST_COMMA
+    ASM::SEMI,            // ST_SEMI
+    ASM::ERR,            // ST_xN
+    ASM::ERR,            // ST_xNE
+    ASM::NEW,            // ST_xNEW
+    ASM::ERR,            // ST_xD
+    ASM::ERR,            // ST_xDE
+    ASM::ERR,            // ST_xDEL
+    ASM::ERR,            // ST_xDELE
+    ASM::ERR,            // ST_xDELET
+    ASM::DELETE,            // ST_xDELETE
+    ASM::LBRACK,            // ST_LBRACK
+    ASM::RBRACK,            // ST_RBRACK
+    ASM::AMP,            // ST_AMP
+    ASM::ERR,            // ST_xNU
+    ASM::ERR,            // ST_xNUL
+    ASM::NUL,            // ST_xNULL
+    ASM::WHITESPACE,     // ST_COMMENT
+    ASM::WHITESPACE      // ST_WHITESPACE
+  };
+  const string whitespace = "\t\n\r ";
+  const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  const string digits = "0123456789";
+  const string hexDigits = "0123456789ABCDEFabcdef";
+  const string oneToNine =  "123456789";
+
+}
+
+ASM::Lexer::Lexer(){
+  // Set default transitions to the Error state
+  for(int i=0; i < maxStates; ++i){
+    for(int j=0; j < maxTrans; ++j){
+      delta[i][j] = ST_ERR;
+    }
+  }
+  // Change transitions as appropriate for the MIPS recognizer
+  setTrans( ST_START,      whitespace,     ST_WHITESPACE );
+  setTrans( ST_WHITESPACE, whitespace,     ST_WHITESPACE );
+  setTrans( ST_START,      letters,        ST_ID         );
+  setTrans( ST_ID,         letters+digits, ST_ID         );
+  setTrans( ST_START,      oneToNine,      ST_NUM        );
+  setTrans( ST_NUM,        digits,         ST_NUM        );
+  setTrans( ST_START,      "(",            ST_LPAREN     );
+  setTrans( ST_START,      ")",            ST_RPAREN     );
+  setTrans( ST_START,      "{",            ST_LBRACE     );
+  setTrans( ST_START,      "}",            ST_RBRACE     );
+  setTrans( ST_START,      "R",            ST_xR         );
+  setTrans( ST_xR,         "E",            ST_xRE        );
+  setTrans( ST_xRE,        "T",            ST_xRET       );
+  setTrans( ST_xRET,       "U",            ST_xRETU      );
+  setTrans( ST_xRETU,      "R",            ST_xRETUR     );
+  setTrans( ST_xRETUR,     "N",            ST_xRETURN    );
+  setTrans( ST_START,      "I",            ST_xI         );
+  setTrans( ST_xI,         "F",            ST_xIF        );
+  setTrans( ST_START,      "E",            ST_xE         );
+  setTrans( ST_xE,         "L",            ST_xEL        );
+  setTrans( ST_xEL,        "S",            ST_xELS       );
+  setTrans( ST_xELS,       "E",            ST_xELSE      );
+  setTrans( ST_START,      "W",            ST_xW         );
+  setTrans( ST_xW,         "H",            ST_xWH        );
+  setTrans( ST_xWH,        "I",            ST_xWHI       );
+  setTrans( ST_xWHI,       "L",            ST_xWHIL      );
+  setTrans( ST_xWHIL,      "E",            ST_xWHILE     );
+  setTrans( ST_START,      "P",            ST_xP         );
+  setTrans( ST_xP,         "R",            ST_xPR        );
+  setTrans( ST_xPR,        "I",            ST_xPRI       );
+  setTrans( ST_xPRI,       "N",            ST_xPRIN      );
+  setTrans( ST_xPRIN,      "T",            ST_xPRINT     );
+  setTrans( ST_xPRINT,     "L",            ST_xPRINTL    );
+  setTrans( ST_xPRINTL,    "N",            ST_xPRINTLN   );
+  setTrans( ST_xW,         "A",            ST_xWA        );
+  setTrans( ST_xWA,        "I",            ST_xWAI       );
+  setTrans( ST_xWAI,       "N",            ST_xWAIN      );
+  setTrans( ST_START,      "=",            ST_BECOMES    );
+  setTrans( ST_xI,         "N",            ST_xIN        );
+  setTrans( ST_xIN,        "T",            ST_xINT       );
+  setTrans( ST_BECOMES,    "=",            ST_EQ         );
+  setTrans( ST_START,      "!",            ST_nE         );
+  setTrans( ST_nE,         "=",            ST_NE         );
+  setTrans( ST_START,      "<",            ST_LT         );
+  setTrans( ST_START,      ">",            ST_GT         );
+  setTrans( ST_LT,         "=",            ST_LE         );
+  setTrans( ST_GT,         "=",            ST_GE         );
+  setTrans( ST_START,      "+",            ST_PLUS       );
+  setTrans( ST_START,      "-",            ST_MINUS      );
+  setTrans( ST_START,      "*",            ST_STAR       );
+  setTrans( ST_START,      "/",            ST_SLASH      );
+  setTrans( ST_START,      "%",            ST_PCT        );
+  setTrans( ST_START,      ",",            ST_COMMA      );
+  setTrans( ST_START,      ";",            ST_SEMI       );
+  setTrans( ST_START,      "N",            ST_xN         );
+  setTrans( ST_xN,         "E",            ST_xNE        );
+  setTrans( ST_xNE,        "W",            ST_xNEW       );
+  setTrans( ST_START,      "D",            ST_xD         );
+  setTrans( ST_xD,         "E",            ST_xDE        );
+  setTrans( ST_xDE,        "L",            ST_xDEL       );
+  setTrans( ST_xDEL,       "E",            ST_xDELE      );
+  setTrans( ST_xDELE,      "T",            ST_xDELET     );
+  setTrans( ST_xDELET,     "E",            ST_xDELETE    );
+  setTrans( ST_START,      "[",            ST_LBRACK     );
+  setTrans( ST_START,      "]",            ST_RBRACK     );
+  setTrans( ST_START,      "&",            ST_AMP        );
+  setTrans( ST_xN,         "U",            ST_xNU        );
+  setTrans( ST_xNU,        "L",            ST_xNUL       );
+  setTrans( ST_xNUL,       "L",            ST_xNULL      );
+  setTrans( ST_xSLASH,     "/",            ST_COMMENT    );
+  
+  // A comment can only ever lead to the comment state
+  for(int j=0; j < maxTrans; ++j) delta[ST_COMMENT][j] = ST_COMMENT;
+}
+
+// Set the transitions from one state to another state based upon characters in the
+// given string
+void ASM::Lexer::setTrans(ASM::State from, const string& chars, ASM::State to){
+  for(string::const_iterator it = chars.begin(); it != chars.end(); ++it)
+    delta[from][static_cast<unsigned int>(*it)] = to;
+}
+
+// Scan a line of input (as a string) and return a vector
+// of Tokens representing the MIPS instruction in that line
+vector<ASM::Token*> ASM::Lexer::scan(const string& line){
+  // Return vector
+  vector<Token*> ret;
+  if(line.size() == 0) return ret;
+  // Always begin at the start state
+  State currState = ST_START;
+  // startIter represents the beginning of the next Token
+  // that is to be recognized. Initially, this is the beginning
+  // of the line.
+  // Use a const_iterator since we cannot change the input line
+  string::const_iterator startIter = line.begin();
+  // Loop over the the line
+  for(string::const_iterator it = line.begin();;){
+    // Assume the next state is the error state
+    State nextState = ST_ERR;
+    // If we aren't done then get the transition from the current
+    // state to the next state based upon the current character of
+    //input
+    if(it != line.end())
+      nextState = delta[currState][static_cast<unsigned int>(*it)];
+    // If there is no valid transition then we have reach then end of a
+    // Token and can add a new Token to the return vector
+    if(ST_ERR == nextState){
+      // Get the kind corresponding to the current state
+      Kind currKind = stateKinds[currState];
+      // If we are in an Error state then we have reached an invalid
+      // Token - so we throw and error and delete the Tokens parsed
+      // thus far
+      if(ERR == currKind){
+        vector<Token*>::iterator vit;
+        for(vit = ret.begin(); vit != ret.end(); ++vit)
+          delete *vit;
+        throw "ERROR in lexing after reading " + string(line.begin(),it);
+      }
+      // If we are not in Whitespace then we push back a new token
+      // based upon the kind of the State we end in
+      // Whitespace is ignored for practical purposes
+      if(WHITESPACE != currKind)
+        ret.push_back(Token::makeToken(currKind,string(startIter,it)));
+      // Start of next Token begins here
+      startIter = it;
+      // Revert to start state to begin recognizing next token
+      currState = ST_START;
+      if(it == line.end()) break;
+    } else {
+      // Otherwise we proceed to the next state and increment the iterator
+      currState = nextState;
+      ++it;
+    }
+  }
+  return ret;
+}

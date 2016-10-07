@@ -1,0 +1,378 @@
+#include <iostream>
+#include <sstream>
+#include <utility>
+#include <map>
+#include <vector>
+using namespace std;
+
+class Tree {
+public:
+  string rules;
+  vector< string > tokens;
+  vector< Tree > children;
+};
+
+typedef map<string, string> sT;
+typedef pair<vector<string>, sT> sigST;
+typedef map<string, sigST > tST;
+tST topSymbolTable; 
+string proc = "none";
+string sigProc = "none";
+bool error = false;
+int sigCounter = 0;
+
+bool isTerminal( string word ) {
+  string terminals[] = {"BOF", "BECOMES", "COMMA", "ELSE", "EOF", "EQ", "GE", "GT", "ID", "IF", "INT", "LBRACE", "LE", "LPAREN", "LT", "MINUS", "NE", "NUM", "PCT", "PLUS", "PRINTLN", "RBRACE", "RETURN", "RPAREN", "SEMI", "SLASH", "STAR", "WAIN", "WHILE", "AMP", "LBRACK", "RBRACK", "NEW", "DELETE", "NULL"};
+  for(int i = 0; i < 35; i++){
+    if( word == terminals[i] ) return true;
+  }
+  return false;
+}
+
+
+expr expr PLUS term
+expr term
+term factor
+factor ID
+ID a
+Tree BuildNode( string rules ) {
+
+  Tree parseNode;
+  parseNode.rules = rules;
+  
+  istringstream iss(rules);
+  string word;
+
+  while( iss >> word ) {
+    parseNode.tokens.push_back( word );
+  }
+  
+  if(isTerminal(parseNode.tokens[0])==false) {
+    
+    for( int i = 1; i < parseNode.tokens.size(); i++ ) {
+      string line;
+      getline(cin, line);
+      parseNode.children.push_back( BuildNode( line ));
+    }
+
+  }
+   
+  return parseNode;
+}
+ 
+void PrintTree( Tree parseTree ) {
+  for( vector<Tree>::const_iterator it=parseTree.children.begin(); it!=parseTree.children.end(); ++it ) {
+    cout << (*it).rules << endl;
+    PrintTree(*it);
+  }
+}  
+
+
+void BuildSymbolTable(Tree parseTree){
+  for( vector<Tree>::const_iterator it=parseTree.children.begin(); it!=parseTree.children.end(); ++it ) {
+    if(it->rules == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){  //new function
+      
+      if( topSymbolTable.find( it->children[1].tokens[1] ) == topSymbolTable.end() ){ //new function
+	  proc = it->children[1].tokens[1];
+	  topSymbolTable.insert( make_pair( proc, sigST() ));
+      } else {
+	cerr << "ERROR: Function already declared" << endl;
+	error = true;
+      }
+
+    } else  if(it->rules == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){    //wain
+      
+      if( topSymbolTable.find( "wain" ) == topSymbolTable.end() ){
+	proc = "wain";
+	topSymbolTable.insert( make_pair( proc, sigST() ));
+	
+	if(it->children[3].children[0].rules == "type INT STAR"){
+	  topSymbolTable[proc].first.push_back( it->children[3].children[0].children[0].tokens[1] + it->children[3].children[0].children[1].tokens[1] );
+	} else if(it->children[3].children[0].rules == "type INT"){
+	  topSymbolTable[proc].first.push_back( it->children[3].children[0].children[0].tokens[1] );
+	}
+	
+	if(it->children[5].children[0].rules == "type INT STAR"){
+	  topSymbolTable[proc].first.push_back( it->children[5].children[0].children[0].tokens[1] + it->children[5].children[0].children[1].tokens[1] );
+	} else if(it->children[5].children[0].rules == "type INT"){
+	  topSymbolTable[proc].first.push_back( it->children[5].children[0].children[0].tokens[1] );
+	}
+      } else {
+	cerr << "ERROR: WAIN already declared" << endl;
+	error = true;
+      }
+
+    } else if(it->rules == "paramlist dcl COMMA paramlist" || it->rules == "paramlist dcl"){ //retrieve signatures
+
+      if(it->children[0].children[0].rules == "type INT STAR"){
+	topSymbolTable[proc].first.push_back( it->children[0].children[0].children[0].tokens[1] + it->children[0].children[0].children[1].tokens[1] );
+      } else if(it->children[0].children[0].rules == "type INT"){
+	topSymbolTable[proc].first.push_back( it->children[0].children[0].children[0].tokens[1] );
+      }
+
+    } else if(it->rules == "factor ID LPAREN arglist RPAREN" || it->rules == "factor ID LPAREN RPAREN"){ //function called
+      
+      if( topSymbolTable.find( it->children[0].tokens[1] ) == topSymbolTable.end() ){ //function not declared
+	cerr << "ERROR: function not declared" << endl;
+	error = true;
+      }
+
+    } else if(it->rules == "dcl type ID"){       
+      
+      if( topSymbolTable[proc].second.find(it->children[1].tokens[1]) == topSymbolTable[proc].second.end()){
+	if( it->children[0].rules == "type INT STAR" ){
+	  topSymbolTable[proc].second.insert( make_pair( it->children[1].tokens[1], it->children[0].children[0].tokens[1] + it->children[0].children[1].tokens[1] ));
+	} else if( it->children[0].rules == "type INT" ){
+	  topSymbolTable[proc].second.insert( make_pair( it->children[1].tokens[1], it->children[0].children[0].tokens[1] ));
+	}
+      } else {
+	cerr << "ERROR: Multiple declerations" << endl;
+	error = true;
+      }
+
+    } 
+    BuildSymbolTable(*it);
+  }
+}
+
+void CheckForUndeclared(Tree parseTree){
+  for( vector<Tree>::const_iterator it=parseTree.children.begin(); it!=parseTree.children.end(); ++it ) {    
+    if(it->rules == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+      proc = it->children[1].tokens[1];
+    } else  if(it->rules == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+      proc = "wain";
+    } else if(it->rules == "factor ID"){    //iterate through symbol table and check if term is declared
+      for(map< string, sigST >::const_iterator it1=topSymbolTable.begin(); it1!=topSymbolTable.end(); ++it1){
+	if( topSymbolTable[proc].second.find(it->children[0].tokens[1]) == topSymbolTable[proc].second.end() ){
+	  cerr << "ERROR: variable undeclared" << endl;
+	  error = true;
+	} 
+      }
+    }
+    CheckForUndeclared(*it);
+  }
+}
+
+
+string typeOf(Tree parseTree){
+  if(parseTree.tokens[0] == "ID"){
+    
+    return topSymbolTable[proc].second[parseTree.tokens[1]];
+
+  } else if(parseTree.tokens[0] == "NUM") {
+
+    return "int";
+
+  } else if(parseTree.rules == "expr term" || parseTree.rules == "term factor" || parseTree.rules == "factor ID" || parseTree.rules == "factor NUM" || parseTree.rules == "lvalue ID"){
+    
+    return typeOf(parseTree.children[0]);
+
+  } else if(parseTree.rules == "lvalue LPAREN lvalue RPAREN" || parseTree.rules == "factor LPAREN expr RPAREN"){
+    
+    return typeOf(parseTree.children[1]);
+
+  } else if(parseTree.rules == "lvalue STAR factor" || parseTree.rules == "factor STAR factor"){
+
+    if(typeOf(parseTree.children[1]) != "int*"){
+      return "ERROR: not a pointer";
+    } else {
+      return "int";
+    }
+
+  } else if(parseTree.rules == "factor AMP lvalue"){
+
+    if(typeOf(parseTree.children[1]) != "int"){
+      return "ERROR: ampersand error";
+    } else {
+      return "int*";
+    }
+
+  } else if(parseTree.rules == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+    
+    if(typeOf(parseTree.children[9]) != "int"){
+      return "ERROR: function needs int";
+    } else {
+      return typeOf(parseTree.children[9]);
+    }
+
+  } else  if(parseTree.rules == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+    
+    if(typeOf(parseTree.children[11]) != "int"){
+      return "ERROR: wain needs int";
+    } else {
+      return typeOf(parseTree.children[11]);
+    }
+
+  } else if(parseTree.rules == "dcls dcls dcl BECOMES NULL SEMI" ){
+
+    if(typeOf(parseTree.children[1].children[1]) != "int*"){
+      return "ERROR: cannot initiate int to NULL";
+    } else {
+      return typeOf(parseTree.children[1]);
+    }
+    
+  } else if(parseTree.rules == "test expr EQ expr" || parseTree.rules == "test expr EQ expr"){
+
+    if(typeOf(parseTree.children[0]) != typeOf(parseTree.children[2])){
+      return "ERROR: test type mismatch";
+    } else {
+      return typeOf(parseTree.children[0]);
+    }
+
+  } else if(parseTree.rules == "test expr LT expr" || parseTree.rules == "test expr GT expr" || parseTree.rules == "test expr LE expr" || parseTree.rules == "test expr GE expr"){
+
+    if(typeOf(parseTree.children[0]) != typeOf(parseTree.children[2])){
+      return "ERROR: test type mismatch";
+    } else {
+      if(typeOf(parseTree.children[0]) == "*int"){
+	return "array comparison";
+      }
+    }
+    
+  } else if(parseTree.rules == "PRINTLN LPAREN expr RPAREN SEMI"){
+    
+    if(typeOf(parseTree.children[1]) != "int"){
+      return "ERROR: println requires int";
+    }
+
+  } else if(parseTree.rules == "DELETE LBRACK RBRACK expr SEMI"){
+    
+    if(typeOf(parseTree.children[2]) != "int*"){
+      return "ERROR: delete required pointer";
+    }
+  
+  }else if(parseTree.rules == "factor NEW INT LBRACK expr RBRACK"){
+    
+    if(typeOf(parseTree.children[3]) != "int"){
+      return "ERROR: argument of NEW INT [] must be an int";
+    } else {
+      return "int*";
+    }
+    
+  } else if(parseTree.rules == "statement lvalue BECOMES expr SEMI"){
+    
+    if(typeOf(parseTree.children[0]) != typeOf(parseTree.children[2])){
+      return "ERROR: type mismatch";
+    } else {
+      return typeOf(parseTree.children[0]);
+    }
+      
+
+    //CHECKS FOR SIGNATURES
+  }else if(parseTree.rules == "factor ID LPAREN arglist RPAREN"){ //new function called, reset sigCounter
+    
+    sigCounter = 0;
+    sigProc = parseTree.children[0].tokens[1];
+    return typeOf(parseTree.children[2]);
+
+  }else if(parseTree.rules == "arglist expr COMMA arglist") {
+    
+    if(sigCounter < topSymbolTable[sigProc].first.size()){
+      if(topSymbolTable[sigProc].first[sigCounter] != typeOf(parseTree.children[0])){
+	return "ERROR: signatures do not match " + topSymbolTable[sigProc].first[sigCounter] + " and " + typeOf(parseTree.children[0]);
+      } else {
+	sigCounter++;
+	return typeOf(parseTree.children[2]);
+      }
+    } else {
+      return "ERROR: not enough signatures";
+    }
+
+  }else if(parseTree.rules == "arglist expr"){
+
+    if(sigCounter != topSymbolTable[sigProc].first.size() - 1){
+      return "ERROR: not enough parameters";
+    }else if(sigCounter < topSymbolTable[sigProc].first.size()){
+      if(topSymbolTable[sigProc].first[sigCounter] != typeOf(parseTree.children[0])){
+	return "ERROR: signatures do not match " + topSymbolTable[sigProc].first[sigCounter] + " and " + typeOf(parseTree.children[0]);
+      } else {
+	return typeOf(parseTree.children[0]);
+      }
+    } else {
+      return "ERROR: not enough signatures";
+    }
+
+  
+  } else if(parseTree.rules == "expr expr PLUS term"){
+
+    if(typeOf(parseTree.children[0]) == "int" && typeOf(parseTree.children[2]) == "int"){
+      return "int";
+    } else if(typeOf(parseTree.children[0]) == "int*" && typeOf(parseTree.children[2]) == "int*"){
+      return "ERROR: int* + int*";
+    } else {
+      return "int*";
+    }
+
+  } else if(parseTree.rules == "expr expr MINUS term"){
+    
+    if(typeOf(parseTree.children[0]) == "int" && typeOf(parseTree.children[2]) == "int"){
+      return "int";
+    } else if(typeOf(parseTree.children[0]) == "int*" && typeOf(parseTree.children[2]) == "int*"){
+      return "int";
+    } else if(typeOf(parseTree.children[0]) == "int*" && typeOf(parseTree.children[2]) == "int"){
+      return "int*";
+    } else {
+      return "ERROR: int - int*";
+    }
+
+  } else if(parseTree.rules == "term term STAR factor" || parseTree.rules == "term term SLASH factor" || parseTree.rules == "term term PCT factor"){
+
+    if(typeOf(parseTree.children[0]) == "int" && typeOf(parseTree.children[2]) == "int"){
+      return "int";
+    } else {
+      return "ERROR: multiplication error";
+    }
+  } else {
+    return "no type";
+  }
+}
+
+bool CheckTypes(Tree parseTree){
+  for( vector<Tree>::const_iterator it=parseTree.children.begin(); it!=parseTree.children.end(); ++it ) {    
+    if(it->rules == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+      proc = it->children[1].tokens[1];
+    } else  if(it->rules == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE"){
+      proc = "wain";
+    } else { 
+      if( typeOf(*it).find("ERROR") != string::npos ){
+	error = true;
+	cerr << typeOf(*it) << endl;
+	return false;
+      }
+    }
+    CheckTypes(*it);
+  }
+  return true;
+}
+
+
+int main() {
+  Tree parseTree;
+  
+  string line;
+  getline(cin, line);
+  parseTree = BuildNode(line);
+  
+  BuildSymbolTable( parseTree );
+  CheckForUndeclared( parseTree );
+  CheckTypes( parseTree );
+  /*
+  if(error == false){
+    for( map< string, sigST >::const_iterator it=topSymbolTable.begin(); it!=topSymbolTable.end(); ++it){
+      
+      cerr << it->first;
+      for( vector<string>::const_iterator it2=it->second.first.begin(); it2!=it->second.first.end(); ++it2){
+	cerr << " " << *it2;
+      }
+      cerr << endl;
+
+      if( it->first == "wain"){
+	for( sT::const_iterator it1=it->second.second.begin(); it1!=it->second.second.end(); ++it1){
+	  cerr << it1->first << " " << it1->second << endl;
+	}
+      }
+
+      cerr << endl;
+    }
+    }*/ 
+}

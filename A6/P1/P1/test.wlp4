@@ -1,0 +1,9 @@
+int wain(int a, int b) {
+    int bb = 0;
+    int c = 0;
+    int i;
+    int if;
+    int iff;
+    int whil;
+    int whilex;
+}

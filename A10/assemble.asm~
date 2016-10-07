@@ -1,0 +1,20 @@
+;Prologue
+.import print
+lis $4
+.word 4
+lis $11
+.word 1
+sub $29, $30, $4
+sw $1, -4($30)
+sub $30, $30, $4
+sw $2, -4($30)
+sub $30, $30, $4
+;GenCode
+lis $3
+.word 23456
+sw $3, 0($29)         ;variable: a
+lw $3, 0($29)
+lw $3, 0($3)
+;Epilogue
+add $30, $29, $4
+jr $31
